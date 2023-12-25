@@ -1,0 +1,143 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                      Nebula FX                    |
+//|                                forexroboteasy.com                 |
+//|                           Forex Robot Easy Team                   |
+//+------------------------------------------------------------------+
+
+// Include necessary libraries
+#include <Trade\Trade.mqh>
+#include <Series\Series.mqh>
+#include <Indicators\Trend.mqh>
+
+// Define constants
+#define MAX_TRADES 5
+#define RISK_FACTOR 0.02
+
+// Initialize global variables
+CTrade trade;
+CSeries series;
+CTrend trend;
+
+//+------------------------------------------------------------------+
+//|                               OnTick                             |
+//|       Function to be executed on every new tick in the market     |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   // Check market trend
+   ENUM_DIRECTION currentTrend = trend.GetCurrentTrend(Symbol(), PERIOD_H1);
+   
+   // Generate trading signals based on trend validity and strength criteria
+   ENUM_SIGNAL signal = GenerateSignal(currentTrend);
+   
+   // Execute trade based on generated signal
+   ExecuteTrade(signal);
+   
+   // Check for open trades and manage risk
+   ManageRisk();
+}
+
+//+------------------------------------------------------------------+
+//|                          GenerateSignal                          |
+//|   Function to generate trading signals based on trend analysis    |
+//+------------------------------------------------------------------+
+ENUM_SIGNAL GenerateSignal(ENUM_DIRECTION currentTrend)
+{
+   ENUM_SIGNAL signal;
+   
+   if(currentTrend == TREND_UP)
+      signal = SIGNAL_BUY;
+   else if(currentTrend == TREND_DOWN)
+      signal = SIGNAL_SELL;
+   else
+      signal = SIGNAL_NONE;
+   
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+//|                           ExecuteTrade                           |
+//|         Function to open or close trades based on signals         |
+//+------------------------------------------------------------------+
+void ExecuteTrade(ENUM_SIGNAL signal)
+{
+   int totalTrades = trade.PositionsTotal();
+   
+   if(signal == SIGNAL_BUY && totalTrades < MAX_TRADES)
+      trade.Buy(Symbol(), 0.1, Ask, Ask+100*Point);
+   else if(signal == SIGNAL_SELL && totalTrades < MAX_TRADES)
+      trade.Sell(Symbol(), 0.1, Bid, Bid-100*Point);
+   else if(signal == SIGNAL_NONE && totalTrades > 0)
+      CloseAllTrades();
+}
+
+//+------------------------------------------------------------------+
+//|                          ManageRisk                              |
+//|       Function to manage risk and minimize potential losses       |
+//+------------------------------------------------------------------+
+void ManageRisk()
+{
+   int totalTrades = trade.PositionsTotal();
+   
+   for(int i=0; i<totalTrades; i++)
+   {
+      double stopLoss = trade.PositionGetDouble(POSITION_SL, i);
+      double entryPrice = trade.PositionGetDouble(POSITION_PRICE_OPEN, i);
+      
+      if(stopLoss == 0.0)
+      {
+         double riskAmount = trade.PositionGetDouble(POSITION_VOLUME, i) * Point * RISK_FACTOR;
+         double targetPrice = entryPrice + riskAmount;
+         
+         trade.PositionModify(i, targetPrice, 0.0);
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//|                          CloseAllTrades                          |
+//|                Function to close all open trades                  |
+//+------------------------------------------------------------------+
+void CloseAllTrades()
+{
+   int totalTrades = trade.PositionsTotal();
+   
+   for(int i=0; i<totalTrades; i++)
+      trade.PositionClose(i);
+}
+
+//+------------------------------------------------------------------+
+//|                            OnDeinit                              |
+//|       Function to be executed before the program is stopped      |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   // Close all open trades before deinitializing
+   CloseAllTrades();
+}
+
+//+------------------------------------------------------------------+
+//|                             OnInit                               |
+//|         Function to be executed when the program starts          |
+//+------------------------------------------------------------------+
+void OnInit()
+{
+   // Initialize trade and series objects
+   trade.SetExpertMagicNumber(123456);
+   series.SetSymbol(Symbol());
+   series.SetPeriod(PERIOD_H1);
+   
+   // Initialize trend object
+   trend.SetSymbol(Symbol());
+   trend.SetPeriod(PERIOD_H1);
+}
+
+//+------------------------------------------------------------------+
+//|                         Program Start                            |
+//+------------------------------------------------------------------+
+void OnStart()
+{
+   // Run the program
+   OnTick();
+}
